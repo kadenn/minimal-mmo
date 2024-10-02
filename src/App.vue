@@ -5,6 +5,13 @@
         Player Position: X: {{ playerPosition.x.toFixed(2) }}, Y:
         {{ playerPosition.y.toFixed(2) }}, Z: {{ playerPosition.z.toFixed(2) }}
       </p>
+      <p>Experience: {{ experience }} | Level: {{ level }}</p>
+      <div class="log">
+        <h3>Logs:</h3>
+        <ul>
+          <li v-for="(message, index) in logMessages" :key="index">{{ message }}</li>
+        </ul>
+      </div>
     </div>
   </div>
 </template>
@@ -13,9 +20,17 @@
 import { onMounted, onBeforeUnmount, ref, reactive } from "vue";
 import * as THREE from "three";
 
+// References and reactive state
 const mountRef = ref(null);
 const globalScene = ref(null);
 const playerPosition = reactive({ x: 0, y: 1, z: 0 });
+
+// Experience and Level
+const experience = ref(0);
+const level = ref(1);
+
+// Log Messages
+const logMessages = ref([]);
 
 // Control variables
 const keys = reactive({
@@ -29,18 +44,36 @@ const keys = reactive({
 let jump = false;
 let jumpHeight = 1;
 
+// Player Stats
+const playerStats = reactive({
+  baseDamage: 1, // Base damage per hit
+});
+
 // Monster class
 class Monster {
   constructor(mesh) {
     this.mesh = mesh;
-    this.health = 3; // Initial health
+    this.health = 5; // Increased health
   }
 
-  takeDamage() {
-    this.health -= 1;
+  takeDamage(damage) {
+    this.health -= damage;
     if (this.health <= 0) {
       // Remove from scene
       globalScene.value.remove(this.mesh);
+      // Remove from monsters array
+      const index = monsters.indexOf(this);
+      if (index > -1) {
+        monsters.splice(index, 1);
+      }
+      // Log the kill and gain experience
+      const gainedXP = 10; // Example XP per kill
+      experience.value += gainedXP;
+      logMessages.value.unshift(`Monster killed! Gained ${gainedXP} XP.`);
+      // Check for level up
+      checkLevelUp();
+      // Spawn a new monster
+      spawnMonster();
     }
   }
 }
@@ -48,12 +81,37 @@ class Monster {
 // Array to hold monsters
 const monsters = [];
 
+// Function to spawn a single monster at a random position
+const spawnMonster = () => {
+  const monsterGeometry = new THREE.BoxGeometry(3, 3, 3); // Bigger monster
+  const monsterMaterial = new THREE.MeshStandardMaterial({
+    color: 0xff0000,
+  }); // Red
+  const monster = new THREE.Mesh(monsterGeometry, monsterMaterial);
+  monster.position.set(
+    Math.random() * 20 - 10,
+    1.5, // Half of height to sit on ground
+    Math.random() * 20 - 10
+  );
+  globalScene.value.add(monster);
+  monsters.push(new Monster(monster));
+};
+
+// Function to spawn multiple monsters initially
+const spawnInitialMonsters = (count = 10) => {
+  for (let i = 0; i < count; i++) {
+    spawnMonster();
+  }
+};
+
+// Function to handle player jump
 const handleJump = () => {
   if (!jump) {
     jump = true;
   }
 };
 
+// Handle key down events
 const handleKeyDown = (event) => {
   const { key } = event;
   if (keys.hasOwnProperty(key)) {
@@ -65,12 +123,46 @@ const handleKeyDown = (event) => {
   }
 };
 
+// Handle key up events
 const handleKeyUp = (event) => {
   const { key } = event;
   if (keys.hasOwnProperty(key)) {
     keys[key] = false;
   }
 };
+
+// Function to check and handle level up
+const checkLevelUp = () => {
+  const xpThreshold = level.value * 100; // Example threshold
+  if (experience.value >= xpThreshold) {
+    experience.value -= xpThreshold;
+    level.value += 1;
+    logMessages.value.unshift(`Leveled up to Level ${level.value}!`);
+    growPlayer();
+    increaseDamage();
+  }
+};
+
+// Function to grow the player character
+const growPlayer = () => {
+  player.scale.set(level.value, level.value, level.value);
+};
+
+// Function to increase player damage based on level
+const increaseDamage = () => {
+  playerStats.baseDamage += 0.5; // Example increment
+};
+
+// Player mesh (declared here to access in functions)
+let player;
+
+// Player scaling
+player = new THREE.Mesh(
+  new THREE.SphereGeometry(1, 32, 32),
+  new THREE.MeshStandardMaterial({ color: 0x0000ff }) // Blue
+);
+player.position.y = 1;
+globalScene.value?.add(player); // Will be properly added in onMounted
 
 onMounted(() => {
   // Create scene
@@ -109,23 +201,11 @@ onMounted(() => {
   scene.add(ground);
 
   // Create player (simple blue sphere)
-  const playerGeometry = new THREE.SphereGeometry(1, 32, 32);
-  const playerMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff }); // Blue
-  const player = new THREE.Mesh(playerGeometry, playerMaterial);
-  player.position.y = 1;
+  player.position.set(0, 1, 0);
   scene.add(player);
 
-  // Create obstacles (red cubes)
-  for (let i = 0; i < 10; i++) {
-    const obstacleGeometry = new THREE.BoxGeometry(2, 2, 2);
-    const obstacleMaterial = new THREE.MeshStandardMaterial({
-      color: 0xff0000,
-    }); // Red
-    const obstacle = new THREE.Mesh(obstacleGeometry, obstacleMaterial);
-    obstacle.position.set(Math.random() * 20 - 10, 1, Math.random() * 20 - 10);
-    scene.add(obstacle);
-    monsters.push(new Monster(obstacle));
-  }
+  // Spawn initial monsters
+  spawnInitialMonsters();
 
   // Keyboard event listeners
   window.addEventListener("keydown", handleKeyDown);
@@ -160,7 +240,7 @@ onMounted(() => {
         const distance = player.position.distanceTo(monster.mesh.position);
         if (distance < 2) {
           // Collision threshold
-          monster.takeDamage();
+          monster.takeDamage(playerStats.baseDamage);
           console.log(`Monster ${index + 1} health: ${monster.health}`);
         }
       }
@@ -177,6 +257,7 @@ onMounted(() => {
       player.position.y -= 0.1;
       if (player.position.y <= 1) {
         player.position.y = 1;
+        jumpHeight = 1; // Reset jump height
       }
     }
 
@@ -221,9 +302,30 @@ onMounted(() => {
   position: absolute;
   top: 10px;
   left: 10px;
-  background: rgba(255, 255, 255, 0.7);
-  padding: 10px;
-  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 15px;
+  border-radius: 8px;
   font-family: Arial, sans-serif;
+  max-width: 300px;
+}
+
+.log {
+  margin-top: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.log ul {
+  list-style-type: none;
+  padding: 0;
+  margin: 0;
+}
+
+.log li {
+  background: #f0f0f0;
+  margin-bottom: 5px;
+  padding: 5px;
+  border-radius: 4px;
+  font-size: 14px;
 }
 </style>
