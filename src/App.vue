@@ -1,15 +1,13 @@
 <template>
   <div ref="mountRef" class="canvas-container">
     <div class="ui">
-      <p>
-        Player Position: X: {{ playerPosition.x.toFixed(2) }}, Y:
-        {{ playerPosition.y.toFixed(2) }}, Z: {{ playerPosition.z.toFixed(2) }}
-      </p>
       <p>Experience: {{ experience }} | Level: {{ level }}</p>
       <div class="log">
         <h3>Logs:</h3>
         <ul>
-          <li v-for="(message, index) in logMessages" :key="index">{{ message }}</li>
+          <li v-for="(message, index) in logMessages.reverse()" :key="index">
+            {{ message }}
+          </li>
         </ul>
       </div>
     </div>
@@ -38,6 +36,10 @@ const keys = reactive({
   a: false,
   s: false,
   d: false,
+  ArrowLeft: false,
+  ArrowRight: false,
+  ArrowUp: false,
+  ArrowDown: false,
 });
 
 // Jump variables
@@ -48,6 +50,13 @@ let jumpHeight = 1;
 const playerStats = reactive({
   baseDamage: 1, // Base damage per hit
 });
+
+// Camera control variables
+const cameraAngleAzimuth = ref(0); // Horizontal angle in radians
+const cameraAnglePolar = ref(Math.PI / 4); // Vertical angle in radians
+const cameraDistance = ref(10);
+const minDistance = 5;
+const maxDistance = 20;
 
 // Monster class
 class Monster {
@@ -164,6 +173,17 @@ player = new THREE.Mesh(
 player.position.y = 1;
 globalScene.value?.add(player); // Will be properly added in onMounted
 
+// Handle mouse wheel for zoom
+const handleWheel = (event) => {
+  event.preventDefault();
+  const delta = event.deltaY * 0.05;
+  cameraDistance.value += delta;
+  cameraDistance.value = Math.max(
+    minDistance,
+    Math.min(maxDistance, cameraDistance.value)
+  );
+};
+
 onMounted(() => {
   // Create scene
   const scene = new THREE.Scene();
@@ -177,8 +197,26 @@ onMounted(() => {
     0.1,
     1000
   );
-  camera.position.set(0, 5, 10);
-  camera.lookAt(0, 0, 0);
+
+  // Initial camera position
+  const updateCameraPosition = () => {
+    const x =
+      player.position.x +
+      cameraDistance.value *
+        Math.sin(cameraAngleAzimuth.value) *
+        Math.sin(cameraAnglePolar.value);
+    const y =
+      player.position.y +
+      cameraDistance.value * Math.cos(cameraAnglePolar.value);
+    const z =
+      player.position.z +
+      cameraDistance.value *
+        Math.cos(cameraAngleAzimuth.value) *
+        Math.sin(cameraAnglePolar.value);
+    camera.position.set(x, y, z);
+    camera.lookAt(player.position);
+  };
+  updateCameraPosition();
 
   // Create renderer
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -210,6 +248,9 @@ onMounted(() => {
   // Keyboard event listeners
   window.addEventListener("keydown", handleKeyDown);
   window.addEventListener("keyup", handleKeyUp);
+  renderer.domElement.addEventListener("wheel", handleWheel, {
+    passive: false,
+  });
 
   // Animation loop
   const animate = () => {
@@ -241,7 +282,6 @@ onMounted(() => {
         if (distance < 2) {
           // Collision threshold
           monster.takeDamage(playerStats.baseDamage);
-          console.log(`Monster ${index + 1} health: ${monster.health}`);
         }
       }
     });
@@ -261,9 +301,42 @@ onMounted(() => {
       }
     }
 
-    // Camera follows player
-    camera.position.x = player.position.x;
-    camera.position.z = player.position.z + 10;
+    // Camera controls
+    const rotationSpeed = 0.02;
+    const angleStep = rotationSpeed;
+    const polarStep = rotationSpeed;
+
+    if (keys.ArrowLeft) {
+      cameraAngleAzimuth.value -= angleStep;
+    }
+    if (keys.ArrowRight) {
+      cameraAngleAzimuth.value += angleStep;
+    }
+    if (keys.ArrowUp) {
+      cameraAnglePolar.value -= polarStep;
+      if (cameraAnglePolar.value < 0.1) cameraAnglePolar.value = 0.1;
+    }
+    if (keys.ArrowDown) {
+      cameraAnglePolar.value += polarStep;
+      if (cameraAnglePolar.value > Math.PI / 2 - 0.1)
+        cameraAnglePolar.value = Math.PI / 2 - 0.1;
+    }
+
+    // Update camera position based on angles and distance
+    const x =
+      player.position.x +
+      cameraDistance.value *
+        Math.sin(cameraAngleAzimuth.value) *
+        Math.sin(cameraAnglePolar.value);
+    const y =
+      player.position.y +
+      cameraDistance.value * Math.cos(cameraAnglePolar.value);
+    const z =
+      player.position.z +
+      cameraDistance.value *
+        Math.cos(cameraAngleAzimuth.value) *
+        Math.sin(cameraAnglePolar.value);
+    camera.position.set(x, y, z);
     camera.lookAt(player.position);
 
     renderer.render(scene, camera);
@@ -285,6 +358,7 @@ onMounted(() => {
     window.removeEventListener("keydown", handleKeyDown);
     window.removeEventListener("keyup", handleKeyUp);
     window.removeEventListener("resize", handleResize);
+    renderer.domElement.removeEventListener("wheel", handleWheel);
     mountRef.value.removeChild(renderer.domElement);
   });
 });
