@@ -1,9 +1,7 @@
 <template>
   <div ref="mountRef" class="canvas-container">
     <div class="ui">
-      <p>
-        Level: {{ level }} | Damage: {{ playerStats.baseDamage }}
-      </p>
+      <p>Level: {{ level }} | Damage: {{ playerStats.baseDamage }}</p>
       <div class="log">
         <ul>
           <li v-for="message in logMessages.slice(0, 4)" :key="message">
@@ -45,7 +43,7 @@ const keys = reactive({
 
 // Jump variables
 let jump = false;
-let jumpHeight = 10;
+let jumpHeight = 0;
 
 // Player Stats
 const playerStats = reactive({
@@ -307,9 +305,16 @@ const checkLevelUp = () => {
     experience.value -= xpThreshold;
     level.value += 1;
     logMessages.value.unshift(`Leveled up to Level ${level.value}!`);
+    restoreFullHealth();
     growPlayer();
     increaseDamage();
   }
+};
+
+// Function to restore player health to full
+const restoreFullHealth = () => {
+  playerStats.health = playerStats.maxHealth;
+  updatePlayerHealthBar();
 };
 
 // Function to grow the player character
@@ -345,7 +350,7 @@ const createPlayer = (scene) => {
   const headGeometry = new THREE.SphereGeometry(0.5, 32, 32);
   const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffe0bd }); // Skin color
   const head = new THREE.Mesh(headGeometry, headMaterial);
-  head.position.y = 2.3; // On top of the body, raised higher
+  head.position.y = 2.4; // On top of the body, raised higher
   playerGroup.add(head);
 
   // Left Arm
@@ -377,13 +382,16 @@ const createPlayer = (scene) => {
   playerMaxHealth = maxHealth;
 
   // Set initial position
-  playerGroup.position.set(0, 1, 0);
+  playerGroup.position.set(0, 0, 0);
   scene.add(playerGroup);
 };
 
 // Function to update the player's health bar
 const updatePlayerHealthBar = () => {
-  const healthPercentage = Math.max(playerStats.health / playerStats.maxHealth, 0);
+  const healthPercentage = Math.max(
+    playerStats.health / playerStats.maxHealth,
+    0
+  );
   const barWidth = playerHealthBarCanvas.width - 20;
   const filledWidth = barWidth * healthPercentage;
 
@@ -442,9 +450,7 @@ const createSky = (scene) => {
   scene.add(sky);
 
   // Add clouds
-  const cloudTexture = new THREE.TextureLoader().load(
-    "https://threejsfundamentals.org/threejs/resources/images/cloud.png"
-  );
+  const cloudTexture = new THREE.TextureLoader().load("/cloud.webp");
   const cloudMaterial = new THREE.SpriteMaterial({
     map: cloudTexture,
     transparent: true,
@@ -544,13 +550,37 @@ onMounted(() => {
   directionalLight.position.set(5, 10, 7.5);
   scene.add(directionalLight);
 
-  // Create ground
+  // Create a procedural texture using canvas
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const context = canvas.getContext("2d");
+
+  // Create procedural noise for the grass texture
+  for (let y = 0; y < canvas.height; y++) {
+    for (let x = 0; x < canvas.width; x++) {
+      const value = Math.floor(Math.random() * 50 + 200); // Random light green shades
+      context.fillStyle = `rgb(${value}, ${value + 20}, ${value})`;
+      context.fillRect(x, y, 1, 1);
+    }
+  }
+
+  // Convert canvas to texture
+  const grassTexture = new THREE.CanvasTexture(canvas);
+
+  // Create the ground geometry and material
   const groundGeometry = new THREE.PlaneGeometry(200, 200);
   const groundMaterial = new THREE.MeshStandardMaterial({
     color: 0x228b22,
-  }); // Forest green
+    map: grassTexture, // Procedural grass texture
+    roughness: 0.8,
+    metalness: 0.2,
+  });
+
+  // Create ground mesh
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
   ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true; // Optional: if you're using shadows
   scene.add(ground);
 
   // Add sky with enhanced gradient and clouds
@@ -642,6 +672,9 @@ onMounted(() => {
             logMessages.value.unshift("Game Over!");
             playerStats.health = 0;
             // You can implement game over logic here
+            // For now we just reset the health and position
+            playerGroup.position.set(0, 1, 0);
+            restoreFullHealth();
           }
         }
       }
@@ -649,16 +682,19 @@ onMounted(() => {
 
     // Jump logic
     if (jump) {
-      playerGroup.position.y += 0.2;
-      jumpHeight += 0.2;
+      playerGroup.position.y += 0.2; // Increase player's y position
+      jumpHeight += 0.2; // Track the jump height
       if (jumpHeight >= 10) {
-        jump = false;
+        // Max jump height reached
+        jump = false; // Stop jumping, start falling
       }
-    } else if (playerGroup.position.y > 1) {
-      playerGroup.position.y -= 0.2;
-      if (playerGroup.position.y <= 1) {
-        playerGroup.position.y = 1;
-        jumpHeight = 1; // Reset jump height
+    } else if (playerGroup.position.y > 0) {
+      // Player is above the ground (falling)
+      playerGroup.position.y -= 0.3; // Fall speed (slightly faster than jump speed)
+      if (playerGroup.position.y <= 0) {
+        // Player has landed
+        playerGroup.position.y = 0; // Ensure player doesn't go below ground
+        jumpHeight = 0; // Reset jump height
       }
     }
 
@@ -689,7 +725,8 @@ onMounted(() => {
         Math.sin(cameraAngleAzimuth.value) *
         Math.sin(cameraAnglePolar.value);
     const y =
-      playerGroup.position.y + cameraDistance.value * Math.cos(cameraAnglePolar.value);
+      playerGroup.position.y +
+      cameraDistance.value * Math.cos(cameraAnglePolar.value);
     const z =
       playerGroup.position.z +
       cameraDistance.value *
@@ -709,6 +746,9 @@ onMounted(() => {
     if (playerHealthBar) {
       playerHealthBar.quaternion.copy(camera.quaternion);
     }
+
+    // Make player face the camera only horizontally
+    playerGroup.rotation.y = cameraAngleAzimuth.value + Math.PI;
 
     renderer.render(scene, camera);
   };
