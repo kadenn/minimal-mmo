@@ -1,11 +1,13 @@
 <template>
   <div ref="mountRef" class="canvas-container">
     <div class="ui">
-      <p>Experience: {{ experience }} | Level: {{ level }}</p>
-      <p>Damage: {{ playerStats.baseDamage }}</p>
+      <p>
+        Level: {{ level }} | Damage:
+        {{ playerStats.baseDamage }}
+      </p>
       <div class="log">
         <ul>
-          <li v-for="message in logMessages.slice(0, 4)">
+          <li v-for="message in logMessages.slice(0, 4)" :key="message">
             {{ message }}
           </li>
         </ul>
@@ -57,6 +59,13 @@ const cameraAnglePolar = ref(Math.PI / 4); // Vertical angle in radians
 const cameraDistance = ref(40);
 const minDistance = 5;
 const maxDistance = 100;
+
+// Mouse control variables
+let isMouseDown = false;
+let previousMousePosition = {
+  x: 0,
+  y: 0,
+};
 
 // Monster Types
 const monsterTypes = [
@@ -119,74 +128,61 @@ const addForestBoundaries = (scene) => {
   }
 };
 
-// Function to create a health bar sprite
-const createHealthBar = () => {
+// Function to create a health bar sprite with monster name
+const createHealthBar = (name, initialHealth, maxHealth) => {
   const canvas = document.createElement("canvas");
-  canvas.width = 64;
-  canvas.height = 8;
+  canvas.width = 128;
+  canvas.height = 32; // Increased height to accommodate text and health bar
   const context = canvas.getContext("2d");
 
-  // Initial fill (full health)
+  // Draw monster name
+  context.font = "bold 14px Arial";
+  context.fillStyle = "#ffffff";
+  context.textAlign = "center";
+  context.fillText(name, canvas.width / 2, 14);
+
+  // Draw health bar background
+  context.fillStyle = "#555555";
+  context.fillRect(10, 18, canvas.width - 20, 10);
+
+  // Draw initial fill (full health)
   context.fillStyle = "#ff0000";
-  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillRect(10, 18, canvas.width - 20, 10);
+
+  // Draw numerical health
+  context.font = "bold 10px Arial";
+  context.fillStyle = "#ffffff";
+  context.textAlign = "center";
+  context.fillText(`${initialHealth} / ${maxHealth}`, canvas.width / 2, 27);
 
   const texture = new THREE.CanvasTexture(canvas);
   const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
   const sprite = new THREE.Sprite(spriteMaterial);
-  sprite.scale.set(4, 0.5, 1); // Adjust size as needed
+  sprite.scale.set(8, 2, 1); // Adjust size as needed
 
-  return { sprite, texture, canvas, context };
+  return { sprite, texture, context, canvas, maxHealth };
 };
 
-// Function to create a text label sprite
-const createTextLabel = (text, color = "#000000") => {
-  const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
-  const fontSize = 64;
-  context.font = `${fontSize}px Arial`;
-  const textWidth = context.measureText(text).width;
-  canvas.width = textWidth;
-  canvas.height = fontSize;
-
-  // Draw text
-  context.font = `${fontSize}px Arial`;
-  context.fillStyle = color;
-  context.fillText(text, 0, fontSize);
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.minFilter = THREE.LinearFilter; // To prevent blurriness
-  const spriteMaterial = new THREE.SpriteMaterial({
-    map: texture,
-    transparent: true,
-  });
-  const sprite = new THREE.Sprite(spriteMaterial);
-  sprite.scale.set(5, 2.5, 1); // Adjust size as needed
-
-  return { sprite, texture, canvas, context };
-};
-
-// Modify the Monster class to include health bar and name label
+// Modify the Monster class to include health bar with name
 class Monster {
   constructor(mesh, type, scene) {
     this.mesh = mesh;
     this.health = type.health;
     this.type = type;
 
-    // Create health bar
-    const { sprite, texture, context, canvas } = createHealthBar();
+    // Create health bar with name
+    const { sprite, texture, context, canvas, maxHealth } = createHealthBar(
+      this.type.name,
+      this.health,
+      this.type.health
+    );
     sprite.position.set(0, 3, 0); // Position above the monster
     this.healthBar = sprite;
     this.healthBarTexture = texture;
     this.healthBarContext = context;
     this.healthBarCanvas = canvas;
+    this.maxHealth = maxHealth;
     this.mesh.add(this.healthBar);
-
-    // Create name label
-    const name = type.name;
-    const { sprite: nameSprite } = createTextLabel(name);
-    nameSprite.position.set(0, 4, 0); // Position above the health bar
-    this.nameLabel = nameSprite;
-    this.mesh.add(this.nameLabel);
   }
 
   takeDamage(damage) {
@@ -211,20 +207,30 @@ class Monster {
   }
 
   updateHealthBar() {
-    const healthPercentage = Math.max(this.health / this.type.health, 0);
-    const width = this.healthBarCanvas.width * healthPercentage;
+    const healthPercentage = Math.max(this.health / this.maxHealth, 0);
+    const barWidth = this.healthBarCanvas.width - 20;
+    const filledWidth = barWidth * healthPercentage;
 
-    // Clear the canvas
-    this.healthBarContext.clearRect(
-      0,
-      0,
-      this.healthBarCanvas.width,
-      this.healthBarCanvas.height
-    );
+    // Clear the health bar area (excluding the name)
+    this.healthBarContext.clearRect(0, 18, this.healthBarCanvas.width, 14);
 
-    // Draw the health bar
+    // Redraw health bar background
+    this.healthBarContext.fillStyle = "#555555";
+    this.healthBarContext.fillRect(10, 18, barWidth, 10);
+
+    // Redraw filled health
     this.healthBarContext.fillStyle = "#ff0000";
-    this.healthBarContext.fillRect(0, 0, width, this.healthBarCanvas.height);
+    this.healthBarContext.fillRect(10, 18, filledWidth, 10);
+
+    // Redraw numerical health
+    this.healthBarContext.font = "bold 10px Arial";
+    this.healthBarContext.fillStyle = "#ffffff";
+    this.healthBarContext.textAlign = "center";
+    this.healthBarContext.fillText(
+      `${Math.max(this.health, 0)} / ${this.maxHealth}`,
+      this.healthBarCanvas.width / 2,
+      27
+    );
 
     // Update texture
     this.healthBarTexture.needsUpdate = true;
@@ -303,11 +309,6 @@ const increaseDamage = () => {
   playerStats.baseDamage += 0.5; // Example increment
 };
 
-// Function to create a text label sprite
-const createTextLabelSprite = (sprite) => {
-  return sprite;
-};
-
 // Player mesh (declared here to access in functions)
 let player;
 
@@ -330,6 +331,44 @@ const handleWheel = (event) => {
     minDistance,
     Math.min(maxDistance, cameraDistance.value)
   );
+};
+
+// Mouse event handlers for camera control
+const handleMouseDown = (event) => {
+  isMouseDown = true;
+  previousMousePosition = {
+    x: event.clientX,
+    y: event.clientY,
+  };
+};
+
+const handleMouseMove = (event) => {
+  if (isMouseDown) {
+    const deltaMove = {
+      x: event.clientX - previousMousePosition.x,
+      y: event.clientY - previousMousePosition.y,
+    };
+
+    const azimuthStep = deltaMove.x * 0.005;
+    const polarStep = deltaMove.y * 0.005;
+
+    cameraAngleAzimuth.value -= azimuthStep;
+    cameraAnglePolar.value -= polarStep;
+
+    // Clamp the polar angle to prevent flipping
+    if (cameraAnglePolar.value < 0.1) cameraAnglePolar.value = 0.1;
+    if (cameraAnglePolar.value > Math.PI / 2 - 0.1)
+      cameraAnglePolar.value = Math.PI / 2 - 0.1;
+
+    previousMousePosition = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+  }
+};
+
+const handleMouseUp = (event) => {
+  isMouseDown = false;
 };
 
 onMounted(() => {
@@ -370,6 +409,11 @@ onMounted(() => {
   renderer.setSize(window.innerWidth, window.innerHeight);
   mountRef.value.appendChild(renderer.domElement);
 
+  // Prevent the context menu from appearing on right-click within the canvas
+  renderer.domElement.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+  });
+
   // Lighting
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
   scene.add(ambientLight);
@@ -402,6 +446,11 @@ onMounted(() => {
   renderer.domElement.addEventListener("wheel", handleWheel, {
     passive: false,
   });
+
+  // Mouse event listeners for camera control
+  renderer.domElement.addEventListener("mousedown", handleMouseDown);
+  renderer.domElement.addEventListener("mousemove", handleMouseMove);
+  renderer.domElement.addEventListener("mouseup", handleMouseUp);
 
   // Animation loop
   const animate = () => {
@@ -464,13 +513,13 @@ onMounted(() => {
 
     // Jump logic
     if (jump) {
-      player.position.y += 0.1;
-      jumpHeight += 0.1;
-      if (jumpHeight >= 5) {
+      player.position.y += 0.2;
+      jumpHeight += 0.2;
+      if (jumpHeight >= 10) {
         jump = false;
       }
     } else if (player.position.y > 1) {
-      player.position.y -= 0.1;
+      player.position.y -= 0.2;
       if (player.position.y <= 1) {
         player.position.y = 1;
         jumpHeight = 1; // Reset jump height
@@ -478,9 +527,8 @@ onMounted(() => {
     }
 
     // Camera controls
-    const rotationSpeed = 0.02;
-    const angleStep = rotationSpeed;
-    const polarStep = rotationSpeed;
+    const angleStep = 0.01;
+    const polarStep = 0.005;
 
     if (keys.ArrowLeft) {
       cameraAngleAzimuth.value += angleStep;
@@ -515,22 +563,11 @@ onMounted(() => {
     camera.position.set(x, y, z);
     camera.lookAt(player.position);
 
-    // Make labels face the camera
-    const allLabels = [];
-
-    // Collect all monster labels
+    // Make health bars face the camera
     monsters.forEach((monster) => {
-      allLabels.push(monster.nameLabel);
-      allLabels.push(monster.healthBar);
-    });
-
-    // Collect player label
-    if (player.nameLabel) {
-      allLabels.push(player.nameLabel);
-    }
-
-    allLabels.forEach((label) => {
-      label.quaternion.copy(camera.quaternion);
+      if (monster.healthBar) {
+        monster.healthBar.quaternion.copy(camera.quaternion);
+      }
     });
 
     renderer.render(scene, camera);
@@ -553,6 +590,12 @@ onMounted(() => {
     window.removeEventListener("keyup", handleKeyUp);
     window.removeEventListener("resize", handleResize);
     renderer.domElement.removeEventListener("wheel", handleWheel);
+    renderer.domElement.removeEventListener("mousedown", handleMouseDown);
+    renderer.domElement.removeEventListener("mousemove", handleMouseMove);
+    renderer.domElement.removeEventListener("mouseup", handleMouseUp);
+    renderer.domElement.removeEventListener("contextmenu", (event) => {
+      event.preventDefault();
+    });
     mountRef.value.removeChild(renderer.domElement);
   });
 });
