@@ -2,8 +2,7 @@
   <div ref="mountRef" class="canvas-container">
     <div class="ui">
       <p>
-        Level: {{ level }} | Damage:
-        {{ playerStats.baseDamage }}
+        Level: {{ level }} | Damage: {{ playerStats.baseDamage }}
       </p>
       <div class="log">
         <ul>
@@ -50,7 +49,10 @@ let jumpHeight = 10;
 
 // Player Stats
 const playerStats = reactive({
-  baseDamage: 1, // Base damage per hit
+  baseDamage: 5, // Base damage per hit
+  health: 1000,
+  maxHealth: 1000,
+  name: "Player",
 });
 
 // Camera control variables
@@ -126,14 +128,14 @@ const addForestBoundaries = (scene) => {
   }
 };
 
-// Function to create a health bar sprite with monster name
+// Function to create a health bar sprite with monster or player name
 const createHealthBar = (name, initialHealth, maxHealth) => {
   const canvas = document.createElement("canvas");
   canvas.width = 128;
   canvas.height = 32; // Increased height to accommodate text and health bar
   const context = canvas.getContext("2d");
 
-  // Draw monster name
+  // Draw name
   context.font = "bold 14px Arial";
   context.fillStyle = "#ffffff";
   context.textAlign = "center";
@@ -248,7 +250,7 @@ const spawnMonster = () => {
   const monster = new THREE.Mesh(monsterGeometry, monsterMaterial);
   monster.position.set(
     Math.random() * 180 - 90, // Keep within boundaryDistance - 10 to prevent spawning near the boundary
-    1, // Half of height to sit on ground
+    1.5, // Half of height to sit on ground
     Math.random() * 180 - 90
   );
   globalScene.value.add(monster);
@@ -322,45 +324,95 @@ const increaseDamage = () => {
 
 // Player group (declared here to access in functions)
 let playerGroup;
+let playerHealthBar;
+let playerHealthBarTexture;
+let playerHealthBarContext;
+let playerHealthBarCanvas;
+let playerMaxHealth;
 
-// Function to create player with body, head, and arms
+// Function to create player with body, head, arms, and health bar
 const createPlayer = (scene) => {
   playerGroup = new THREE.Group();
 
   // Body
   const bodyGeometry = new THREE.BoxGeometry(1, 2, 0.5);
-  const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff });
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x008000 }); // Green
   const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
   body.position.y = 1; // Adjust position
   playerGroup.add(body);
 
   // Head
   const headGeometry = new THREE.SphereGeometry(0.5, 32, 32);
-  const headMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff });
+  const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffe0bd }); // Skin color
   const head = new THREE.Mesh(headGeometry, headMaterial);
-  head.position.y = 2; // On top of the body
+  head.position.y = 2.3; // On top of the body, raised higher
   playerGroup.add(head);
 
   // Left Arm
   const leftArmGeometry = new THREE.BoxGeometry(0.3, 1, 0.3);
-  const leftArmMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff });
+  const leftArmMaterial = new THREE.MeshStandardMaterial({ color: 0xffe0bd }); // Skin color
   const leftArm = new THREE.Mesh(leftArmGeometry, leftArmMaterial);
-  leftArm.position.set(-0.65, 1, 0); // Left side of the body
+  leftArm.position.set(-0.65, 1.3, 0); // Left side of the body
   playerGroup.add(leftArm);
 
   // Right Arm
   const rightArmGeometry = new THREE.BoxGeometry(0.3, 1, 0.3);
-  const rightArmMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff });
+  const rightArmMaterial = new THREE.MeshStandardMaterial({ color: 0xffe0bd }); // Skin color
   const rightArm = new THREE.Mesh(rightArmGeometry, rightArmMaterial);
-  rightArm.position.set(0.65, 1, 0); // Right side of the body
+  rightArm.position.set(0.65, 1.3, 0); // Right side of the body
   playerGroup.add(rightArm);
+
+  // Create health bar with name
+  const { sprite, texture, context, canvas, maxHealth } = createHealthBar(
+    playerStats.name,
+    playerStats.health,
+    playerStats.maxHealth
+  );
+  sprite.position.set(0, 4, 0); // Position above the head
+  playerGroup.add(sprite);
+  playerHealthBar = sprite;
+  playerHealthBarTexture = texture;
+  playerHealthBarContext = context;
+  playerHealthBarCanvas = canvas;
+  playerMaxHealth = maxHealth;
 
   // Set initial position
   playerGroup.position.set(0, 1, 0);
   scene.add(playerGroup);
 };
 
-// Function to create sky with gradient and clouds
+// Function to update the player's health bar
+const updatePlayerHealthBar = () => {
+  const healthPercentage = Math.max(playerStats.health / playerStats.maxHealth, 0);
+  const barWidth = playerHealthBarCanvas.width - 20;
+  const filledWidth = barWidth * healthPercentage;
+
+  // Clear the health bar area (excluding the name)
+  playerHealthBarContext.clearRect(0, 18, playerHealthBarCanvas.width, 14);
+
+  // Redraw health bar background
+  playerHealthBarContext.fillStyle = "#555555";
+  playerHealthBarContext.fillRect(10, 18, barWidth, 10);
+
+  // Redraw filled health
+  playerHealthBarContext.fillStyle = "#00ff00"; // Use green for player's health
+  playerHealthBarContext.fillRect(10, 18, filledWidth, 10);
+
+  // Redraw numerical health
+  playerHealthBarContext.font = "bold 10px Arial";
+  playerHealthBarContext.fillStyle = "#ffffff";
+  playerHealthBarContext.textAlign = "center";
+  playerHealthBarContext.fillText(
+    `${Math.max(playerStats.health, 0)} / ${playerStats.maxHealth}`,
+    playerHealthBarCanvas.width / 2,
+    27
+  );
+
+  // Update texture
+  playerHealthBarTexture.needsUpdate = true;
+};
+
+// Function to create sky with enhanced gradient and clouds
 const createSky = (scene) => {
   // Create a large sphere to act as the sky
   const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
@@ -379,7 +431,7 @@ const createSky = (scene) => {
       void main() {
         float h = normalize(vWorldPosition).y;
         gl_FragColor = vec4(
-          mix(vec3(0.2, 0.5, 0.8), vec3(0.8, 0.9, 1.0), max(h, 0.0)),
+          mix(vec3(0.0, 0.0, 0.5), vec3(0.5, 0.7, 1.0), pow(max(h, 0.0), 0.5)),
           1.0
         );
       }
@@ -501,13 +553,13 @@ onMounted(() => {
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
 
-  // Add sky with gradient and clouds
+  // Add sky with enhanced gradient and clouds
   createSky(scene);
 
   // Add forest boundaries with enhanced trees
   addForestBoundaries(scene);
 
-  // Create player with body, head, and arms
+  // Create player with body, head, arms, and health bar
   createPlayer(scene);
 
   // Spawn initial monsters
@@ -576,11 +628,21 @@ onMounted(() => {
 
     // Collision detection with monsters
     monsters.forEach((monster) => {
-      if (monster.health > 0) {
-        const distance = playerGroup.position.distanceTo(monster.mesh.position);
-        if (distance < 2) {
-          // Collision threshold
+      const distance = playerGroup.position.distanceTo(monster.mesh.position);
+      if (distance < 2) {
+        // Collision threshold
+        if (monster.health > 0) {
           monster.takeDamage(playerStats.baseDamage);
+        }
+        // Player takes damage from monster
+        if (playerStats.health > 0) {
+          playerStats.health -= 1; // Monster damages player
+          updatePlayerHealthBar();
+          if (playerStats.health <= 0) {
+            logMessages.value.unshift("Game Over!");
+            playerStats.health = 0;
+            // You can implement game over logic here
+          }
         }
       }
     });
@@ -627,8 +689,7 @@ onMounted(() => {
         Math.sin(cameraAngleAzimuth.value) *
         Math.sin(cameraAnglePolar.value);
     const y =
-      playerGroup.position.y +
-      cameraDistance.value * Math.cos(cameraAnglePolar.value);
+      playerGroup.position.y + cameraDistance.value * Math.cos(cameraAnglePolar.value);
     const z =
       playerGroup.position.z +
       cameraDistance.value *
@@ -643,6 +704,11 @@ onMounted(() => {
         monster.healthBar.quaternion.copy(camera.quaternion);
       }
     });
+
+    // Make player's health bar face the camera
+    if (playerHealthBar) {
+      playerHealthBar.quaternion.copy(camera.quaternion);
+    }
 
     renderer.render(scene, camera);
   };
