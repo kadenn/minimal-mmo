@@ -2,6 +2,7 @@
   <div ref="mountRef" class="canvas-container">
     <div class="ui">
       <p>Level: {{ level }} | Damage: {{ playerStats.baseDamage }}</p>
+      <p>Next level: {{ level * 100 - experience }} XP</p>
       <div class="log">
         <ul>
           <li v-for="message in logMessages.slice(0, 4)" :key="message">
@@ -324,7 +325,7 @@ const growPlayer = () => {
 
 // Function to increase player damage based on level
 const increaseDamage = () => {
-  playerStats.baseDamage += 0.5; // Example increment
+  playerStats.baseDamage += 1; // Example increment
 };
 
 // Player group (declared here to access in functions)
@@ -423,7 +424,7 @@ const updatePlayerHealthBar = () => {
 // Function to create sky with enhanced gradient and clouds
 const createSky = (scene) => {
   // Create a large sphere to act as the sky
-  const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
+  const skyGeometry = new THREE.SphereGeometry(500, 320, 320);
   const skyMaterial = new THREE.ShaderMaterial({
     uniforms: {},
     vertexShader: `
@@ -659,7 +660,7 @@ onMounted(() => {
     // Collision detection with monsters
     monsters.forEach((monster) => {
       const distance = playerGroup.position.distanceTo(monster.mesh.position);
-      if (distance < 4) {
+      if (distance < 4 + level.value) {
         // Collision threshold
         if (monster.health > 0) {
           monster.takeDamage(playerStats.baseDamage);
@@ -672,9 +673,13 @@ onMounted(() => {
             logMessages.value.unshift("Game Over!");
             playerStats.health = 0;
             // You can implement game over logic here
-            // For now we just reset the health and position
+            // For now we just reset the health position and level
             playerGroup.position.set(0, 1, 0);
             restoreFullHealth();
+            playerGroup.scale.set(1, 1, 1);
+            experience.value = 0;
+            level.value = 1;
+            playerStats.baseDamage = 5;
           }
         }
       }
