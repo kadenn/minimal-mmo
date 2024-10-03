@@ -54,29 +54,144 @@ const playerStats = reactive({
 // Camera control variables
 const cameraAngleAzimuth = ref(0); // Horizontal angle in radians
 const cameraAnglePolar = ref(Math.PI / 4); // Vertical angle in radians
-const cameraDistance = ref(20); 
+const cameraDistance = ref(40);
 const minDistance = 5;
 const maxDistance = 100;
 
 // Monster Types
 const monsterTypes = [
-  { color: 0x00ff00, health: 10 }, // Green
-  { color: 0x0000ff, health: 20 }, // Blue
-  { color: 0xffff00, health: 30 }, // Yellow
-  { color: 0xff00ff, health: 40 }, // Magenta
-  { color: 0xff0000, health: 50 }, // Red
+  { color: 0x00ff00, health: 100, name: "Green" },
+  { color: 0x0000ff, health: 200, name: "Blue" },
+  { color: 0xffff00, health: 300, name: "Yellow" },
+  { color: 0xff00ff, health: 400, name: "Magenta" },
+  { color: 0xff0000, health: 500, name: "Red" },
 ];
 
-// Monster class
+// Function to create a simple tree
+const createTree = () => {
+  const tree = new THREE.Group();
+
+  // Trunk
+  const trunkGeometry = new THREE.CylinderGeometry(0.2, 0.2, 2, 8);
+  const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
+  const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+  trunk.position.y = 1; // Half of trunk height
+  tree.add(trunk);
+
+  // Leaves
+  const leavesGeometry = new THREE.ConeGeometry(1, 3, 8);
+  const leavesMaterial = new THREE.MeshStandardMaterial({ color: 0x228b22 });
+  const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
+  leaves.position.y = 3; // Top of the trunk
+  tree.add(leaves);
+
+  return tree;
+};
+
+// Function to add forest boundaries
+const addForestBoundaries = (scene) => {
+  const boundaryDistance = 100; // Matches the ground size
+  const treeSpacing = 10; // Distance between trees
+
+  // Place trees along the perimeter
+  for (let x = -boundaryDistance; x <= boundaryDistance; x += treeSpacing) {
+    const z1 = -boundaryDistance;
+    const z2 = boundaryDistance;
+    const tree1 = createTree();
+    tree1.position.set(x, 0, z1);
+    scene.add(tree1);
+
+    const tree2 = createTree();
+    tree2.position.set(x, 0, z2);
+    scene.add(tree2);
+  }
+
+  for (let z = -boundaryDistance; z <= boundaryDistance; z += treeSpacing) {
+    const x1 = -boundaryDistance;
+    const x2 = boundaryDistance;
+    const tree1 = createTree();
+    tree1.position.set(x1, 0, z);
+    scene.add(tree1);
+
+    const tree2 = createTree();
+    tree2.position.set(x2, 0, z);
+    scene.add(tree2);
+  }
+};
+
+// Function to create a health bar sprite
+const createHealthBar = () => {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 8;
+  const context = canvas.getContext("2d");
+
+  // Initial fill (full health)
+  context.fillStyle = "#ff0000";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+  const sprite = new THREE.Sprite(spriteMaterial);
+  sprite.scale.set(4, 0.5, 1); // Adjust size as needed
+
+  return { sprite, texture, canvas, context };
+};
+
+// Function to create a text label sprite
+const createTextLabel = (text, color = "#000000") => {
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  const fontSize = 64;
+  context.font = `${fontSize}px Arial`;
+  const textWidth = context.measureText(text).width;
+  canvas.width = textWidth;
+  canvas.height = fontSize;
+
+  // Draw text
+  context.font = `${fontSize}px Arial`;
+  context.fillStyle = color;
+  context.fillText(text, 0, fontSize);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter; // To prevent blurriness
+  const spriteMaterial = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+  });
+  const sprite = new THREE.Sprite(spriteMaterial);
+  sprite.scale.set(5, 2.5, 1); // Adjust size as needed
+
+  return { sprite, texture, canvas, context };
+};
+
+// Modify the Monster class to include health bar and name label
 class Monster {
-  constructor(mesh, type) {
+  constructor(mesh, type, scene) {
     this.mesh = mesh;
     this.health = type.health;
     this.type = type;
+
+    // Create health bar
+    const { sprite, texture, context, canvas } = createHealthBar();
+    sprite.position.set(0, 3, 0); // Position above the monster
+    this.healthBar = sprite;
+    this.healthBarTexture = texture;
+    this.healthBarContext = context;
+    this.healthBarCanvas = canvas;
+    this.mesh.add(this.healthBar);
+
+    // Create name label
+    const name = type.name;
+    const { sprite: nameSprite } = createTextLabel(name);
+    nameSprite.position.set(0, 4, 0); // Position above the health bar
+    this.nameLabel = nameSprite;
+    this.mesh.add(this.nameLabel);
   }
 
   takeDamage(damage) {
     this.health -= damage;
+    this.updateHealthBar();
     if (this.health <= 0) {
       // Remove from scene
       globalScene.value.remove(this.mesh);
@@ -86,13 +201,33 @@ class Monster {
         monsters.splice(index, 1);
       }
       // Log the kill and gain experience
-      experience.value += 15;
-      logMessages.value.unshift(`Monster killed! Gained 15 XP.`);
+      experience.value += 20;
+      logMessages.value.unshift(`Monster killed! Gained 20 XP.`);
       // Check for level up
       checkLevelUp();
       // Spawn a new monster
       spawnMonster();
     }
+  }
+
+  updateHealthBar() {
+    const healthPercentage = Math.max(this.health / this.type.health, 0);
+    const width = this.healthBarCanvas.width * healthPercentage;
+
+    // Clear the canvas
+    this.healthBarContext.clearRect(
+      0,
+      0,
+      this.healthBarCanvas.width,
+      this.healthBarCanvas.height
+    );
+
+    // Draw the health bar
+    this.healthBarContext.fillStyle = "#ff0000";
+    this.healthBarContext.fillRect(0, 0, width, this.healthBarCanvas.height);
+
+    // Update texture
+    this.healthBarTexture.needsUpdate = true;
   }
 }
 
@@ -108,12 +243,12 @@ const spawnMonster = () => {
   });
   const monster = new THREE.Mesh(monsterGeometry, monsterMaterial);
   monster.position.set(
-    Math.random() * 100 - 50,
+    Math.random() * 180 - 90, // Keep within boundaryDistance - 10 to prevent spawning near the boundary
     1, // Half of height to sit on ground
-    Math.random() * 100 - 50
+    Math.random() * 180 - 90
   );
   globalScene.value.add(monster);
-  monsters.push(new Monster(monster, type));
+  monsters.push(new Monster(monster, type, globalScene.value));
 };
 
 // Function to spawn multiple monsters initially
@@ -133,9 +268,7 @@ const handleJump = () => {
 // Handle key down events
 const handleKeyDown = (event) => {
   const { key } = event;
-  if (keys.hasOwnProperty(key)) {
-    keys[key] = true;
-  }
+  keys[key] = true;
   if (key === " ") {
     // Spacebar to jump
     handleJump();
@@ -145,9 +278,7 @@ const handleKeyDown = (event) => {
 // Handle key up events
 const handleKeyUp = (event) => {
   const { key } = event;
-  if (keys.hasOwnProperty(key)) {
-    keys[key] = false;
-  }
+  keys[key] = false;
 };
 
 // Function to check and handle level up
@@ -172,16 +303,23 @@ const increaseDamage = () => {
   playerStats.baseDamage += 0.5; // Example increment
 };
 
+// Function to create a text label sprite
+const createTextLabelSprite = (sprite) => {
+  return sprite;
+};
+
 // Player mesh (declared here to access in functions)
 let player;
 
-// Player scaling
-player = new THREE.Mesh(
-  new THREE.SphereGeometry(1, 32, 32),
-  new THREE.MeshStandardMaterial({ color: 0x0000ff }) // Blue
-);
-player.position.y = 1;
-globalScene.value?.add(player); // Will be properly added in onMounted
+// Function to create player with name label
+const createPlayer = (scene) => {
+  player = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 32, 32),
+    new THREE.MeshStandardMaterial({ color: 0x0000ff }) // Blue
+  );
+  player.position.set(0, 1, 0);
+  scene.add(player);
+};
 
 // Handle mouse wheel for zoom
 const handleWheel = (event) => {
@@ -226,7 +364,6 @@ onMounted(() => {
     camera.position.set(x, y, z);
     camera.lookAt(player.position);
   };
-  updateCameraPosition();
 
   // Create renderer
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -250,9 +387,11 @@ onMounted(() => {
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
 
-  // Create player (simple blue sphere)
-  player.position.set(0, 1, 0);
-  scene.add(player);
+  // Add forest boundaries
+  addForestBoundaries(scene);
+
+  // Create player with name label
+  createPlayer(scene);
 
   // Spawn initial monsters
   spawnInitialMonsters();
@@ -269,7 +408,7 @@ onMounted(() => {
     requestAnimationFrame(animate);
 
     // Player movement relative to camera's horizontal angle
-    const moveSpeed = -0.1;
+    const moveSpeed = 0.1;
     const direction = new THREE.Vector3();
 
     direction
@@ -284,17 +423,28 @@ onMounted(() => {
     right.crossVectors(direction, new THREE.Vector3(0, 1, 0)).normalize();
 
     if (keys.w) {
-      player.position.addScaledVector(direction, moveSpeed);
-    }
-    if (keys.s) {
       player.position.addScaledVector(direction, -moveSpeed);
     }
-    if (keys.a) {
-      player.position.addScaledVector(right, -moveSpeed);
+    if (keys.s) {
+      player.position.addScaledVector(direction, moveSpeed);
     }
-    if (keys.d) {
+    if (keys.a) {
       player.position.addScaledVector(right, moveSpeed);
     }
+    if (keys.d) {
+      player.position.addScaledVector(right, -moveSpeed);
+    }
+
+    // Prevent player from moving beyond boundaries
+    const boundaryLimit = 90; // Slightly less than boundaryDistance to prevent overlap
+    player.position.x = Math.max(
+      -boundaryLimit,
+      Math.min(boundaryLimit, player.position.x)
+    );
+    player.position.z = Math.max(
+      -boundaryLimit,
+      Math.min(boundaryLimit, player.position.z)
+    );
 
     // Update player position reactive state
     playerPosition.x = player.position.x;
@@ -302,7 +452,7 @@ onMounted(() => {
     playerPosition.z = player.position.z;
 
     // Collision detection with monsters
-    monsters.forEach((monster, index) => {
+    monsters.forEach((monster) => {
       if (monster.health > 0) {
         const distance = player.position.distanceTo(monster.mesh.position);
         if (distance < 2) {
@@ -338,11 +488,11 @@ onMounted(() => {
     if (keys.ArrowRight) {
       cameraAngleAzimuth.value -= angleStep;
     }
-    if (keys.ArrowDown) {
+    if (keys.ArrowUp) {
       cameraAnglePolar.value -= polarStep;
       if (cameraAnglePolar.value < 0.1) cameraAnglePolar.value = 0.1;
     }
-    if (keys.ArrowUp) {
+    if (keys.ArrowDown) {
       cameraAnglePolar.value += polarStep;
       if (cameraAnglePolar.value > Math.PI / 2 - 0.1)
         cameraAnglePolar.value = Math.PI / 2 - 0.1;
@@ -364,6 +514,24 @@ onMounted(() => {
         Math.sin(cameraAnglePolar.value);
     camera.position.set(x, y, z);
     camera.lookAt(player.position);
+
+    // Make labels face the camera
+    const allLabels = [];
+
+    // Collect all monster labels
+    monsters.forEach((monster) => {
+      allLabels.push(monster.nameLabel);
+      allLabels.push(monster.healthBar);
+    });
+
+    // Collect player label
+    if (player.nameLabel) {
+      allLabels.push(player.nameLabel);
+    }
+
+    allLabels.forEach((label) => {
+      label.quaternion.copy(camera.quaternion);
+    });
 
     renderer.render(scene, camera);
   };
