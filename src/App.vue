@@ -76,7 +76,7 @@ const monsterTypes = [
   { color: 0xff0000, health: 500, name: "Red" },
 ];
 
-// Function to create a simple tree
+// Function to create a simple tree with varied sizes
 const createTree = () => {
   const tree = new THREE.Group();
 
@@ -87,8 +87,12 @@ const createTree = () => {
   trunk.position.y = 1; // Half of trunk height
   tree.add(trunk);
 
-  // Leaves
-  const leavesGeometry = new THREE.ConeGeometry(1, 3, 8);
+  // Leaves with varying sizes
+  const leavesGeometry = new THREE.ConeGeometry(
+    1 + Math.random() * 0.5,
+    3 + Math.random() * 1,
+    8
+  );
   const leavesMaterial = new THREE.MeshStandardMaterial({ color: 0x228b22 });
   const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
   leaves.position.y = 3; // Top of the trunk
@@ -97,34 +101,28 @@ const createTree = () => {
   return tree;
 };
 
-// Function to add forest boundaries
+// Function to add forest boundaries with increased trees and varied sizes
 const addForestBoundaries = (scene) => {
-  const boundaryDistance = 100; // Matches the ground size
-  const treeSpacing = 10; // Distance between trees
+  const boundaryDistance = 90; // Matches the ground size
+  const treeSpacing = 25; // Decreased spacing for more trees
+  const treeVariation = 0.5; // Variation factor for tree size
 
-  // Place trees along the perimeter
+  // Place trees along the perimeter with some randomness
   for (let x = -boundaryDistance; x <= boundaryDistance; x += treeSpacing) {
-    const z1 = -boundaryDistance;
-    const z2 = boundaryDistance;
-    const tree1 = createTree();
-    tree1.position.set(x, 0, z1);
-    scene.add(tree1);
+    for (let z = -boundaryDistance; z <= boundaryDistance; z += treeSpacing) {
+      // Add some randomness to positions
+      const offsetX = (Math.random() - 0.5) * treeSpacing * 0.5;
+      const offsetZ = (Math.random() - 0.5) * treeSpacing * 0.5;
 
-    const tree2 = createTree();
-    tree2.position.set(x, 0, z2);
-    scene.add(tree2);
-  }
+      const tree = createTree();
+      tree.position.set(x + offsetX, 0, z + offsetZ);
 
-  for (let z = -boundaryDistance; z <= boundaryDistance; z += treeSpacing) {
-    const x1 = -boundaryDistance;
-    const x2 = boundaryDistance;
-    const tree1 = createTree();
-    tree1.position.set(x1, 0, z);
-    scene.add(tree1);
+      // Randomly scale trees for variety
+      const scale = 3 + Math.random() * treeVariation;
+      tree.scale.set(scale, scale, scale);
 
-    const tree2 = createTree();
-    tree2.position.set(x2, 0, z);
-    scene.add(tree2);
+      scene.add(tree);
+    }
   }
 };
 
@@ -274,7 +272,10 @@ const handleJump = () => {
 // Handle key down events
 const handleKeyDown = (event) => {
   const { key } = event;
-  keys[key] = true;
+  if (keys.hasOwnProperty(key)) {
+    // Sadece ilgili tuşları kontrol et
+    keys[key] = true;
+  }
   if (key === " ") {
     // Spacebar to jump
     handleJump();
@@ -284,7 +285,19 @@ const handleKeyDown = (event) => {
 // Handle key up events
 const handleKeyUp = (event) => {
   const { key } = event;
-  keys[key] = false;
+  if (keys.hasOwnProperty(key)) {
+    // Sadece ilgili tuşları kontrol et
+    keys[key] = false;
+  }
+};
+
+// Function to reset all keys (e.g., on window blur)
+const resetKeys = () => {
+  for (const key in keys) {
+    if (keys.hasOwnProperty(key)) {
+      keys[key] = false;
+    }
+  }
 };
 
 // Function to check and handle level up
@@ -431,7 +444,7 @@ onMounted(() => {
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
 
-  // Add forest boundaries
+  // Add forest boundaries with enhanced trees
   addForestBoundaries(scene);
 
   // Create player with name label
@@ -443,6 +456,7 @@ onMounted(() => {
   // Keyboard event listeners
   window.addEventListener("keydown", handleKeyDown);
   window.addEventListener("keyup", handleKeyUp);
+  window.addEventListener("blur", resetKeys); // Yeni eklenen
   renderer.domElement.addEventListener("wheel", handleWheel, {
     passive: false,
   });
@@ -588,6 +602,7 @@ onMounted(() => {
   onBeforeUnmount(() => {
     window.removeEventListener("keydown", handleKeyDown);
     window.removeEventListener("keyup", handleKeyUp);
+    window.removeEventListener("blur", resetKeys); // Yeni eklenen
     window.removeEventListener("resize", handleResize);
     renderer.domElement.removeEventListener("wheel", handleWheel);
     renderer.domElement.removeEventListener("mousedown", handleMouseDown);
