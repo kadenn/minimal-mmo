@@ -341,7 +341,7 @@ const createPlayer = (scene) => {
 
   // Body
   const bodyGeometry = new THREE.BoxGeometry(1, 2, 0.5);
-  const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x008000 }); // Green
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x2a2a2a }); // Gray
   const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
   body.position.y = 1; // Adjust position
   playerGroup.add(body);
@@ -659,7 +659,7 @@ onMounted(() => {
     // Collision detection with monsters
     monsters.forEach((monster) => {
       const distance = playerGroup.position.distanceTo(monster.mesh.position);
-      if (distance < 2) {
+      if (distance < 4) {
         // Collision threshold
         if (monster.health > 0) {
           monster.takeDamage(playerStats.baseDamage);
