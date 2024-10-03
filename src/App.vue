@@ -273,7 +273,6 @@ const handleJump = () => {
 const handleKeyDown = (event) => {
   const { key } = event;
   if (keys.hasOwnProperty(key)) {
-    // Sadece ilgili tuşları kontrol et
     keys[key] = true;
   }
   if (key === " ") {
@@ -286,7 +285,6 @@ const handleKeyDown = (event) => {
 const handleKeyUp = (event) => {
   const { key } = event;
   if (keys.hasOwnProperty(key)) {
-    // Sadece ilgili tuşları kontrol et
     keys[key] = false;
   }
 };
@@ -314,7 +312,7 @@ const checkLevelUp = () => {
 
 // Function to grow the player character
 const growPlayer = () => {
-  player.scale.set(level.value, level.value, level.value);
+  playerGroup.scale.set(level.value, level.value, level.value);
 };
 
 // Function to increase player damage based on level
@@ -322,17 +320,96 @@ const increaseDamage = () => {
   playerStats.baseDamage += 0.5; // Example increment
 };
 
-// Player mesh (declared here to access in functions)
-let player;
+// Player group (declared here to access in functions)
+let playerGroup;
 
-// Function to create player with name label
+// Function to create player with body, head, and arms
 const createPlayer = (scene) => {
-  player = new THREE.Mesh(
-    new THREE.SphereGeometry(1, 32, 32),
-    new THREE.MeshStandardMaterial({ color: 0x0000ff }) // Blue
+  playerGroup = new THREE.Group();
+
+  // Body
+  const bodyGeometry = new THREE.BoxGeometry(1, 2, 0.5);
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff });
+  const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+  body.position.y = 1; // Adjust position
+  playerGroup.add(body);
+
+  // Head
+  const headGeometry = new THREE.SphereGeometry(0.5, 32, 32);
+  const headMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff });
+  const head = new THREE.Mesh(headGeometry, headMaterial);
+  head.position.y = 2; // On top of the body
+  playerGroup.add(head);
+
+  // Left Arm
+  const leftArmGeometry = new THREE.BoxGeometry(0.3, 1, 0.3);
+  const leftArmMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff });
+  const leftArm = new THREE.Mesh(leftArmGeometry, leftArmMaterial);
+  leftArm.position.set(-0.65, 1, 0); // Left side of the body
+  playerGroup.add(leftArm);
+
+  // Right Arm
+  const rightArmGeometry = new THREE.BoxGeometry(0.3, 1, 0.3);
+  const rightArmMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff });
+  const rightArm = new THREE.Mesh(rightArmGeometry, rightArmMaterial);
+  rightArm.position.set(0.65, 1, 0); // Right side of the body
+  playerGroup.add(rightArm);
+
+  // Set initial position
+  playerGroup.position.set(0, 1, 0);
+  scene.add(playerGroup);
+};
+
+// Function to create sky with gradient and clouds
+const createSky = (scene) => {
+  // Create a large sphere to act as the sky
+  const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
+  const skyMaterial = new THREE.ShaderMaterial({
+    uniforms: {},
+    vertexShader: `
+      varying vec3 vWorldPosition;
+      void main() {
+        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = worldPosition.xyz;
+        gl_Position = projectionMatrix * viewMatrix * worldPosition;
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vWorldPosition;
+      void main() {
+        float h = normalize(vWorldPosition).y;
+        gl_FragColor = vec4(
+          mix(vec3(0.2, 0.5, 0.8), vec3(0.8, 0.9, 1.0), max(h, 0.0)),
+          1.0
+        );
+      }
+    `,
+    side: THREE.BackSide,
+  });
+  const sky = new THREE.Mesh(skyGeometry, skyMaterial);
+  scene.add(sky);
+
+  // Add clouds
+  const cloudTexture = new THREE.TextureLoader().load(
+    "https://threejsfundamentals.org/threejs/resources/images/cloud.png"
   );
-  player.position.set(0, 1, 0);
-  scene.add(player);
+  const cloudMaterial = new THREE.SpriteMaterial({
+    map: cloudTexture,
+    transparent: true,
+    opacity: 0.8,
+  });
+
+  for (let i = 0; i < 50; i++) {
+    const cloud = new THREE.Sprite(cloudMaterial);
+    cloud.position.set(
+      (Math.random() - 0.5) * 400,
+      Math.random() * 50 + 50,
+      (Math.random() - 0.5) * 400
+    );
+    const scale = Math.random() * 20 + 20;
+    cloud.scale.set(scale, scale, scale);
+    scene.add(cloud);
+  }
 };
 
 // Handle mouse wheel for zoom
@@ -388,7 +465,6 @@ onMounted(() => {
   // Create scene
   const scene = new THREE.Scene();
   globalScene.value = scene;
-  scene.background = new THREE.Color(0x87ceeb); // Sky blue
 
   // Create camera
   const camera = new THREE.PerspectiveCamera(
@@ -397,25 +473,6 @@ onMounted(() => {
     0.1,
     1000
   );
-
-  // Initial camera position
-  const updateCameraPosition = () => {
-    const x =
-      player.position.x +
-      cameraDistance.value *
-        Math.sin(cameraAngleAzimuth.value) *
-        Math.sin(cameraAnglePolar.value);
-    const y =
-      player.position.y +
-      cameraDistance.value * Math.cos(cameraAnglePolar.value);
-    const z =
-      player.position.z +
-      cameraDistance.value *
-        Math.cos(cameraAngleAzimuth.value) *
-        Math.sin(cameraAnglePolar.value);
-    camera.position.set(x, y, z);
-    camera.lookAt(player.position);
-  };
 
   // Create renderer
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -444,10 +501,13 @@ onMounted(() => {
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
 
+  // Add sky with gradient and clouds
+  createSky(scene);
+
   // Add forest boundaries with enhanced trees
   addForestBoundaries(scene);
 
-  // Create player with name label
+  // Create player with body, head, and arms
   createPlayer(scene);
 
   // Spawn initial monsters
@@ -456,7 +516,7 @@ onMounted(() => {
   // Keyboard event listeners
   window.addEventListener("keydown", handleKeyDown);
   window.addEventListener("keyup", handleKeyUp);
-  window.addEventListener("blur", resetKeys); // Yeni eklenen
+  window.addEventListener("blur", resetKeys);
   renderer.domElement.addEventListener("wheel", handleWheel, {
     passive: false,
   });
@@ -486,38 +546,38 @@ onMounted(() => {
     right.crossVectors(direction, new THREE.Vector3(0, 1, 0)).normalize();
 
     if (keys.w) {
-      player.position.addScaledVector(direction, -moveSpeed);
+      playerGroup.position.addScaledVector(direction, -moveSpeed);
     }
     if (keys.s) {
-      player.position.addScaledVector(direction, moveSpeed);
+      playerGroup.position.addScaledVector(direction, moveSpeed);
     }
     if (keys.a) {
-      player.position.addScaledVector(right, moveSpeed);
+      playerGroup.position.addScaledVector(right, moveSpeed);
     }
     if (keys.d) {
-      player.position.addScaledVector(right, -moveSpeed);
+      playerGroup.position.addScaledVector(right, -moveSpeed);
     }
 
     // Prevent player from moving beyond boundaries
     const boundaryLimit = 90; // Slightly less than boundaryDistance to prevent overlap
-    player.position.x = Math.max(
+    playerGroup.position.x = Math.max(
       -boundaryLimit,
-      Math.min(boundaryLimit, player.position.x)
+      Math.min(boundaryLimit, playerGroup.position.x)
     );
-    player.position.z = Math.max(
+    playerGroup.position.z = Math.max(
       -boundaryLimit,
-      Math.min(boundaryLimit, player.position.z)
+      Math.min(boundaryLimit, playerGroup.position.z)
     );
 
     // Update player position reactive state
-    playerPosition.x = player.position.x;
-    playerPosition.y = player.position.y;
-    playerPosition.z = player.position.z;
+    playerPosition.x = playerGroup.position.x;
+    playerPosition.y = playerGroup.position.y;
+    playerPosition.z = playerGroup.position.z;
 
     // Collision detection with monsters
     monsters.forEach((monster) => {
       if (monster.health > 0) {
-        const distance = player.position.distanceTo(monster.mesh.position);
+        const distance = playerGroup.position.distanceTo(monster.mesh.position);
         if (distance < 2) {
           // Collision threshold
           monster.takeDamage(playerStats.baseDamage);
@@ -527,15 +587,15 @@ onMounted(() => {
 
     // Jump logic
     if (jump) {
-      player.position.y += 0.2;
+      playerGroup.position.y += 0.2;
       jumpHeight += 0.2;
       if (jumpHeight >= 10) {
         jump = false;
       }
-    } else if (player.position.y > 1) {
-      player.position.y -= 0.2;
-      if (player.position.y <= 1) {
-        player.position.y = 1;
+    } else if (playerGroup.position.y > 1) {
+      playerGroup.position.y -= 0.2;
+      if (playerGroup.position.y <= 1) {
+        playerGroup.position.y = 1;
         jumpHeight = 1; // Reset jump height
       }
     }
@@ -562,20 +622,20 @@ onMounted(() => {
 
     // Update camera position based on angles and distance
     const x =
-      player.position.x +
+      playerGroup.position.x +
       cameraDistance.value *
         Math.sin(cameraAngleAzimuth.value) *
         Math.sin(cameraAnglePolar.value);
     const y =
-      player.position.y +
+      playerGroup.position.y +
       cameraDistance.value * Math.cos(cameraAnglePolar.value);
     const z =
-      player.position.z +
+      playerGroup.position.z +
       cameraDistance.value *
         Math.cos(cameraAngleAzimuth.value) *
         Math.sin(cameraAnglePolar.value);
     camera.position.set(x, y, z);
-    camera.lookAt(player.position);
+    camera.lookAt(playerGroup.position);
 
     // Make health bars face the camera
     monsters.forEach((monster) => {
@@ -602,7 +662,7 @@ onMounted(() => {
   onBeforeUnmount(() => {
     window.removeEventListener("keydown", handleKeyDown);
     window.removeEventListener("keyup", handleKeyUp);
-    window.removeEventListener("blur", resetKeys); // Yeni eklenen
+    window.removeEventListener("blur", resetKeys);
     window.removeEventListener("resize", handleResize);
     renderer.domElement.removeEventListener("wheel", handleWheel);
     renderer.domElement.removeEventListener("mousedown", handleMouseDown);
