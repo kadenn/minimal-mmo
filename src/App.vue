@@ -2,10 +2,10 @@
   <div ref="mountRef" class="canvas-container">
     <div class="ui">
       <p>Experience: {{ experience }} | Level: {{ level }}</p>
+      <p>Damage: {{ playerStats.baseDamage }}</p>
       <div class="log">
-        <h3>Logs:</h3>
         <ul>
-          <li v-for="(message, index) in logMessages.reverse()" :key="index">
+          <li v-for="message in logMessages.slice(0, 4)">
             {{ message }}
           </li>
         </ul>
@@ -44,7 +44,7 @@ const keys = reactive({
 
 // Jump variables
 let jump = false;
-let jumpHeight = 1;
+let jumpHeight = 10;
 
 // Player Stats
 const playerStats = reactive({
@@ -54,15 +54,25 @@ const playerStats = reactive({
 // Camera control variables
 const cameraAngleAzimuth = ref(0); // Horizontal angle in radians
 const cameraAnglePolar = ref(Math.PI / 4); // Vertical angle in radians
-const cameraDistance = ref(10);
+const cameraDistance = ref(20); 
 const minDistance = 5;
-const maxDistance = 20;
+const maxDistance = 100;
+
+// Monster Types
+const monsterTypes = [
+  { color: 0x00ff00, health: 10 }, // Green
+  { color: 0x0000ff, health: 20 }, // Blue
+  { color: 0xffff00, health: 30 }, // Yellow
+  { color: 0xff00ff, health: 40 }, // Magenta
+  { color: 0xff0000, health: 50 }, // Red
+];
 
 // Monster class
 class Monster {
-  constructor(mesh) {
+  constructor(mesh, type) {
     this.mesh = mesh;
-    this.health = 5; // Increased health
+    this.health = type.health;
+    this.type = type;
   }
 
   takeDamage(damage) {
@@ -76,9 +86,8 @@ class Monster {
         monsters.splice(index, 1);
       }
       // Log the kill and gain experience
-      const gainedXP = 10; // Example XP per kill
-      experience.value += gainedXP;
-      logMessages.value.unshift(`Monster killed! Gained ${gainedXP} XP.`);
+      experience.value += 15;
+      logMessages.value.unshift(`Monster killed! Gained 15 XP.`);
       // Check for level up
       checkLevelUp();
       // Spawn a new monster
@@ -90,24 +99,25 @@ class Monster {
 // Array to hold monsters
 const monsters = [];
 
-// Function to spawn a single monster at a random position
+// Function to spawn a single monster at a random position with random type
 const spawnMonster = () => {
-  const monsterGeometry = new THREE.BoxGeometry(3, 3, 3); // Bigger monster
+  const type = monsterTypes[Math.floor(Math.random() * monsterTypes.length)];
+  const monsterGeometry = new THREE.BoxGeometry(3, 3, 3); // Adjust size as needed
   const monsterMaterial = new THREE.MeshStandardMaterial({
-    color: 0xff0000,
-  }); // Red
+    color: type.color,
+  });
   const monster = new THREE.Mesh(monsterGeometry, monsterMaterial);
   monster.position.set(
-    Math.random() * 20 - 10,
-    1.5, // Half of height to sit on ground
-    Math.random() * 20 - 10
+    Math.random() * 100 - 50,
+    1, // Half of height to sit on ground
+    Math.random() * 100 - 50
   );
   globalScene.value.add(monster);
-  monsters.push(new Monster(monster));
+  monsters.push(new Monster(monster, type));
 };
 
 // Function to spawn multiple monsters initially
-const spawnInitialMonsters = (count = 10) => {
+const spawnInitialMonsters = (count = 50) => {
   for (let i = 0; i < count; i++) {
     spawnMonster();
   }
@@ -192,7 +202,7 @@ onMounted(() => {
 
   // Create camera
   const camera = new THREE.PerspectiveCamera(
-    75,
+    50,
     window.innerWidth / window.innerHeight,
     0.1,
     1000
@@ -232,8 +242,10 @@ onMounted(() => {
   scene.add(directionalLight);
 
   // Create ground
-  const groundGeometry = new THREE.PlaneGeometry(100, 100);
-  const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x228b22 }); // Forest green
+  const groundGeometry = new THREE.PlaneGeometry(200, 200);
+  const groundMaterial = new THREE.MeshStandardMaterial({
+    color: 0x228b22,
+  }); // Forest green
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
@@ -256,24 +268,38 @@ onMounted(() => {
   const animate = () => {
     requestAnimationFrame(animate);
 
-    // Player movement
-    const moveSpeed = 0.1;
+    // Player movement relative to camera's horizontal angle
+    const moveSpeed = -0.1;
+    const direction = new THREE.Vector3();
+
+    direction
+      .set(
+        Math.sin(cameraAngleAzimuth.value),
+        0,
+        Math.cos(cameraAngleAzimuth.value)
+      )
+      .normalize();
+
+    const right = new THREE.Vector3();
+    right.crossVectors(direction, new THREE.Vector3(0, 1, 0)).normalize();
+
     if (keys.w) {
-      player.position.z -= moveSpeed;
-      playerPosition.z = player.position.z;
+      player.position.addScaledVector(direction, moveSpeed);
     }
     if (keys.s) {
-      player.position.z += moveSpeed;
-      playerPosition.z = player.position.z;
+      player.position.addScaledVector(direction, -moveSpeed);
     }
     if (keys.a) {
-      player.position.x -= moveSpeed;
-      playerPosition.x = player.position.x;
+      player.position.addScaledVector(right, -moveSpeed);
     }
     if (keys.d) {
-      player.position.x += moveSpeed;
-      playerPosition.x = player.position.x;
+      player.position.addScaledVector(right, moveSpeed);
     }
+
+    // Update player position reactive state
+    playerPosition.x = player.position.x;
+    playerPosition.y = player.position.y;
+    playerPosition.z = player.position.z;
 
     // Collision detection with monsters
     monsters.forEach((monster, index) => {
@@ -290,7 +316,7 @@ onMounted(() => {
     if (jump) {
       player.position.y += 0.1;
       jumpHeight += 0.1;
-      if (jumpHeight >= 3) {
+      if (jumpHeight >= 5) {
         jump = false;
       }
     } else if (player.position.y > 1) {
@@ -307,16 +333,16 @@ onMounted(() => {
     const polarStep = rotationSpeed;
 
     if (keys.ArrowLeft) {
-      cameraAngleAzimuth.value -= angleStep;
-    }
-    if (keys.ArrowRight) {
       cameraAngleAzimuth.value += angleStep;
     }
-    if (keys.ArrowUp) {
+    if (keys.ArrowRight) {
+      cameraAngleAzimuth.value -= angleStep;
+    }
+    if (keys.ArrowDown) {
       cameraAnglePolar.value -= polarStep;
       if (cameraAnglePolar.value < 0.1) cameraAnglePolar.value = 0.1;
     }
-    if (keys.ArrowDown) {
+    if (keys.ArrowUp) {
       cameraAnglePolar.value += polarStep;
       if (cameraAnglePolar.value > Math.PI / 2 - 0.1)
         cameraAnglePolar.value = Math.PI / 2 - 0.1;
