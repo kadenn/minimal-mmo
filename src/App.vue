@@ -21,7 +21,7 @@ import * as THREE from "three";
 // References and reactive state
 const mountRef = ref(null);
 const globalScene = ref(null);
-const playerPosition = reactive({ x: 0, y: 1, z: 0 });
+const playerPosition = ref({ x: 0, y: 1, z: 0 });
 
 // Experience and Level
 const experience = ref(0);
@@ -76,6 +76,49 @@ const monsterTypes = [
   { color: 0xff00ff, health: 400, name: "Magenta" },
   { color: 0xff0000, health: 500, name: "Red" },
 ];
+
+// Mobile touch variables
+let touchStart = null;
+
+// Function to handle touch start
+const handleTouchStart = (event) => {
+  touchStart = event.touches[0];
+};
+
+// Function to handle touch move
+const handleTouchMove = (event) => {
+  if (!touchStart) return;
+  const touchCurrent = event.touches[0];
+  const deltaX = touchCurrent.clientX - touchStart.clientX;
+  const deltaY = touchCurrent.clientY - touchStart.clientY;
+
+  if (Math.abs(deltaX) > Math.abs(deltaY)) {
+    if (deltaX > 0) {
+      keys.d = true;
+      keys.a = false;
+    } else {
+      keys.a = true;
+      keys.d = false;
+    }
+  } else {
+    if (deltaY > 0) {
+      keys.s = true;
+      keys.w = false;
+    } else {
+      keys.w = true;
+      keys.s = false;
+    }
+  }
+};
+
+// Function to handle touch end
+const handleTouchEnd = () => {
+  keys.w = false;
+  keys.a = false;
+  keys.s = false;
+  keys.d = false;
+  touchStart = null;
+};
 
 // Function to create a simple tree with varied sizes
 const createTree = () => {
@@ -551,6 +594,12 @@ onMounted(() => {
   directionalLight.position.set(5, 10, 7.5);
   scene.add(directionalLight);
 
+  // Add event listeners for mobile touch
+  renderer.domElement.addEventListener("touchstart", handleTouchStart);
+  renderer.domElement.addEventListener("touchmove", handleTouchMove);
+  renderer.domElement.addEventListener("touchend", handleTouchEnd);
+  renderer.domElement.addEventListener("touchcancel", handleTouchEnd);
+
   // Create a procedural texture using canvas
   const canvas = document.createElement("canvas");
   canvas.width = 512;
@@ -614,7 +663,7 @@ onMounted(() => {
     requestAnimationFrame(animate);
 
     // Player movement relative to camera's horizontal angle
-    const moveSpeed = 0.1;
+    const moveSpeed = 0.3;
     const direction = new THREE.Vector3();
 
     direction
@@ -653,9 +702,9 @@ onMounted(() => {
     );
 
     // Update player position reactive state
-    playerPosition.x = playerGroup.position.x;
-    playerPosition.y = playerGroup.position.y;
-    playerPosition.z = playerGroup.position.z;
+    playerPosition.value.x = playerGroup.position.x;
+    playerPosition.value.y = playerGroup.position.y;
+    playerPosition.value.z = playerGroup.position.z;
 
     // Collision detection with monsters
     monsters.forEach((monster) => {
@@ -782,6 +831,10 @@ onMounted(() => {
     renderer.domElement.removeEventListener("contextmenu", (event) => {
       event.preventDefault();
     });
+    renderer.domElement.removeEventListener("touchstart", handleTouchStart);
+    renderer.domElement.removeEventListener("touchmove", handleTouchMove);
+    renderer.domElement.removeEventListener("touchend", handleTouchEnd);
+    renderer.domElement.removeEventListener("touchcancel", handleTouchEnd);
     mountRef.value.removeChild(renderer.domElement);
   });
 });
