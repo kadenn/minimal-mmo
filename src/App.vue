@@ -31,6 +31,7 @@ const level = ref(1);
 const logMessages = ref([]);
 
 // Control variables
+const lastTouchTime = ref(0);
 const keys = reactive({
   w: false,
   a: false,
@@ -597,10 +598,10 @@ onMounted(() => {
   // Add event listeners for mobile touch
   renderer.domElement.addEventListener("touchstart", (event) => {
     const currentTime = new Date().getTime();
-    if (currentTime - lastTouchTime < 300) {
+    if (currentTime - lastTouchTime.value < 300) {
       handleJump();
     }
-    lastTouchTime = currentTime;
+    lastTouchTime.value = currentTime;
     handleTouchStart(event);
   });
   renderer.domElement.addEventListener("touchstart", handleTouchStart);
