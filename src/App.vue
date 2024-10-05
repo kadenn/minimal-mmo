@@ -762,8 +762,8 @@ onMounted(() => {
     }
 
     // Camera controls
-    const angleStep = 0.01;
-    const polarStep = 0.005;
+    const angleStep = 0.02;
+    const polarStep = 0.02;
 
     if (keys.ArrowLeft) {
       cameraAngleAzimuth.value += angleStep;
