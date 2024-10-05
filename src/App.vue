@@ -595,6 +595,14 @@ onMounted(() => {
   scene.add(directionalLight);
 
   // Add event listeners for mobile touch
+  renderer.domElement.addEventListener("touchstart", (event) => {
+    const currentTime = new Date().getTime();
+    if (currentTime - lastTouchTime < 300) {
+      handleJump();
+    }
+    lastTouchTime = currentTime;
+    handleTouchStart(event);
+  });
   renderer.domElement.addEventListener("touchstart", handleTouchStart);
   renderer.domElement.addEventListener("touchmove", handleTouchMove);
   renderer.domElement.addEventListener("touchend", handleTouchEnd);
