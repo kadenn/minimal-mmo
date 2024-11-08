@@ -672,7 +672,7 @@ onMounted(() => {
     requestAnimationFrame(animate);
 
     // Player movement relative to camera's horizontal angle
-    const moveSpeed = 0.1;
+    const moveSpeed = 0.3;
     const direction = new THREE.Vector3();
 
     direction
